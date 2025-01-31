@@ -149,19 +149,19 @@ def CP_Jun_Router_SystemAlarms(input_json):  # NOTE: Function name and file name
         # conn.commit()  # NOTE: these two lines should be commented out during local testing
 
         # STEP 5: WRITE/APPEND IN CSV FILE   (Don't change anything here - ONLY if checkpoint is not suitable for details csv: if so comment out this part)
-        if str(details).lower()[0] == 'y':
-            directory = '/ssdprepo/HC/' + healthCheckName + '/' + str(requestId) + '/'
-            file_name = checkpointName + '.csv'  # checkpoint name.csv
-            file_path = os.path.join(directory, file_name)
-            os.makedirs(directory, exist_ok=True)  # Create the directory if it doesn't exist
-            module_name = "write_or_append_csv_v2"
-            module_path = "/ssdprepo/wfmgr/texthandlers/python/write_or_append_csv_v2.py"
-            spec = importlib.util.spec_from_file_location(module_name, module_path)
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[module_name] = module
-            spec.loader.exec_module(module)
-            csv_file_status = module.write_or_append_csv_v2(headers, data_to_write, file_path)
-            logging.info(f'csv_file_status{csv_file_status}')
+        # if str(details).lower()[0] == 'y':
+        #     directory = '/ssdprepo/HC/' + healthCheckName + '/' + str(requestId) + '/'
+        #     file_name = checkpointName + '.csv'  # checkpoint name.csv
+        #     file_path = os.path.join(directory, file_name)
+        #     os.makedirs(directory, exist_ok=True)  # Create the directory if it doesn't exist
+        #     module_name = "write_or_append_csv_v2"
+        #     module_path = "/ssdprepo/wfmgr/texthandlers/python/write_or_append_csv_v2.py"
+        #     spec = importlib.util.spec_from_file_location(module_name, module_path)
+        #     module = importlib.util.module_from_spec(spec)
+        #     sys.modules[module_name] = module
+        #     spec.loader.exec_module(module)
+        #     csv_file_status = module.write_or_append_csv_v2(headers, data_to_write, file_path)
+        #     logging.info(f'csv_file_status{csv_file_status}')
 
         # STEP 6: PREPARE OUTPUT AS A PYTHON DICT  (Don't touch anything here)
         outputRecord = {"customer": customer,
