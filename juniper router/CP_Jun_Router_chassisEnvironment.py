@@ -1,3 +1,4 @@
+import csv
 import importlib.util           # For v2
 import json                     # For handling input and output via JSON format
 import logging
@@ -7,8 +8,8 @@ import sys
 import traceback                      # For V2
 import pandas as pd             # For efficient handling of tabular content
 import os
-# import psycopg2                 # For PostgreSQL database interactions
-# import GenericDB_Connection     # For generic database connection functions
+import psycopg2                 # For PostgreSQL database interactions
+import GenericDB_Connection     # For generic database connection functions
 
 
 def CP_Jun_Router_chassisEnvironment(input_json):  # NOTE: Function name and file name have to be EXACTLY the same!
@@ -30,25 +31,21 @@ def CP_Jun_Router_chassisEnvironment(input_json):  # NOTE: Function name and fil
 
     try:
         # STEP 1: UNPACKING INPUT PARAMETERS
-        input_json = str(input_json).replace("'", '"')
-        input_data = json.loads(input_json, strict=False)
-
-        commandOutput = input_data['inputParameter']['commandOutput']
-        autoTT = input_data['inputParameter']['autoTT']
-        details = input_data['inputParameter']['details']
-        status = input_data['inputParameter']['status']
-        remarks = input_data['inputParameter']['remarks']
-        nodeName = input_data['inputParameter']['info']['nodeName']
-        customer = input_data['inputParameter']['info']['customer']
-        hc_set = input_data['inputParameter']['info']['set']
-        healthCheckName = input_data['inputParameter']['info']['healthCheckName']
-        requestId = input_data['inputParameter']['info']['requestId']
-        processId = input_data['inputParameter']['info']['processId']
-        region = input_data['inputParameter']['info']['region']
-        triggerApplication = input_data['inputParameter']['info']['triggerApplication']
-        customNodeName = input_data['inputParameter']['info']['customNodeName']
-        # Placeholder for adding any other parameter(s) referring to reference values
-        maxAllowed = input_data['inputParameter']['maxAllowed']
+        commandOutput = input_json.get('inputParameter', {}).get('commandOutput')
+        autoTT = input_json.get('inputParameter', {}).get('autoTT')
+        details = input_json.get('inputParameter', {}).get('details')
+        status = input_json.get('inputParameter', {}).get('status')
+        remarks = input_json.get('inputParameter', {}).get('remarks')
+        nodeName = input_json.get('inputParameter', {}).get('info', {}).get('nodeName')
+        customer = input_json.get('inputParameter', {}).get('info', {}).get('customer')
+        hc_set = input_json.get('inputParameter', {}).get('info', {}).get('set')
+        healthCheckName = input_json.get('inputParameter', {}).get('info', {}).get('healthCheckName')
+        requestId = input_json.get('inputParameter', {}).get('info', {}).get('requestId')
+        processId = input_json.get('inputParameter', {}).get('info', {}).get('processId')
+        region = input_json.get('inputParameter', {}).get('info', {}).get('region')
+        triggerApplication = input_json.get('inputParameter', {}).get('info', {}).get('triggerApplication')
+        customNodeName = input_json.get('inputParameter', {}).get('info', {}).get('customNodeName')
+        maxAllowed = input_json.get('inputParameter', {}).get('maxAllowed')
 
         # STEP 2: HARDCODED CONFIGURATION FOR THIS SPECIFIC CP
         vendor = 'Juniper'  # Fill with vendor name, eg 'Huawei'
@@ -71,17 +68,21 @@ def CP_Jun_Router_chassisEnvironment(input_json):  # NOTE: Function name and fil
             if match:
               temperature = match.group(1)
               if temperature > maxAllowed:
-                resultValue += 1
+                resultValue += 1 
 
-
-        # Placeholder for code to decide checkResult
-        if resultValue != 0:
-            checkResult = 'NOK'
-        else:
-            checkResult = 'OK'
+        checkResult = "OK" if not resultValue else "NOK"
+        
+        # Assigns "No" to autoTT if resultValue >= 1, otherwise assigns "Yes"
+        autoTT = "No" if not resultValue else "Yes"
+        
+        # Determine details based on autoTT
+        details = "Yes" if autoTT == "Yes" else "No"
 
         # Placeholder for code to assign shortText (one-liner to give some context to the resultValue)
-        shortText = f'There are {resultValue} component temperatures with > {maxAllowed} degrees C'                # Eg_ f'There are {resultValue} dirs with > {maxAllowed}% used disk space.'
+        if not resultValue:
+            shortText = "All devices are reported NORMAL."
+        else:
+            shortText = f"There are {resultValue} components' temperature with > {maxAllowed} degrees C"                  # Eg_ f'There are {resultValue} dirs with > {maxAllowed}% used disk space.'
 
         # Placeholder for code to assign longText.
         # NOTE: this feature is currently not in use - no need to add anything here
@@ -106,49 +107,50 @@ def CP_Jun_Router_chassisEnvironment(input_json):  # NOTE: Function name and fil
             headers = []            # eg: ['Region', 'CustomNodeName', 'NodeName', 'Timestamp', 'Filesystem', 'Size', 'Used', 'Avail', 'Use_pct', 'Mounted_on']
             data_to_write = [[ ], [ ], ..., [ ]]      # eg region, customNodeName, nodeName, timestamp, row['Filesystem'], row['Size'], row['Used'], row['Avail'], row['Use_pct'], row['Mounted_on']] 
                                                       # for index, row in deviations.iterrows()]   --- assuming that each variable deviations is a dataFrame with all rows that need to be written.
-
+            data_to_write = [commandOutput]
+            
         # STEP 4: INSERT RESULTS INTO DATABASE (Don't change)
-        # params = GenericDB_Connection.read_db_config()
-        # conn = psycopg2.connect(**params)
-        # cursor = conn.cursor()
+        params = GenericDB_Connection.read_db_config()
+        conn = psycopg2.connect(**params)
+        cursor = conn.cursor()
         # # Fetch the latest ID and increment it
-        # fetch_next_id_query = "SELECT COALESCE(MAX(CAST(id AS INTEGER)), 0) + 1 AS next_id FROM hc.hc_results;"
-        # cursor.execute(fetch_next_id_query)
-        # next_id = cursor.fetchone()[0]  # Get the next available ID
+        fetch_next_id_query = "SELECT COALESCE(MAX(CAST(id AS INTEGER)), 0) + 1 AS next_id FROM hc.hc_results;"
+        cursor.execute(fetch_next_id_query)
+        next_id = cursor.fetchone()[0]  # Get the next available ID
 
-        # query = (
-        #     'INSERT INTO hc.hc_results (id, customer, health_check_name, set, trigger_application, vendor, node_type, node_name, checkpoint_name, autott, command,status, remarks, checkpoint_type, result_value,check_result,short_text,long_text,request_id, process_id,timestamp,region, logic_nok, logic_warning, inc_id, custom_nodename, details) '
-        #     'VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id;')
-        # record_to_insert = (next_id,
-        #                     None if not customer else customer,
-        #                     None if not healthCheckName else healthCheckName,
-        #                     None if not hc_set else hc_set,
-        #                     None if not triggerApplication else triggerApplication,
-        #                     None if not vendor else vendor,
-        #                     None if not nodeType else nodeType,
-        #                     None if not nodeName else nodeName,
-        #                     None if not checkpointName else checkpointName,
-        #                     None if not autoTT else autoTT,
-        #                     None if not command else command,
-        #                     None if not status else status,
-        #                     None if not remarks else remarks,
-        #                     None if not checkpointType else checkpointType,
-        #                     None if not resultValue else resultValue,
-        #                     None if not checkResult else checkResult,
-        #                     None if not shortText else shortText,
-        #                     None if not longText else longText,
-        #                     None if not requestId else requestId,
-        #                     None if not processId else processId,
-        #                     None if not timestamp else timestamp,
-        #                     None if not region else region,
-        #                     None if not logicNOK else logicNOK,
-        #                     None if not logicWarning else logicWarning,
-        #                     None if not incID else incID,
-        #                     None if not customNodeName else customNodeName,
-        #                     None if not details else details
-        #                     )
-        # cursor.execute(query, record_to_insert)  # NOTE: these two lines should be commented out during local testing
-        # conn.commit()  # NOTE: these two lines should be commented out during local testing
+        query = (
+            'INSERT INTO hc.hc_results (id, customer, health_check_name, set, trigger_application, vendor, node_type, node_name, checkpoint_name, autott, command,status, remarks, checkpoint_type, result_value,check_result,short_text,long_text,request_id, process_id,timestamp,region, logic_nok, logic_warning, inc_id, custom_nodename, details) '
+            'VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id;')
+        record_to_insert = (next_id,
+                            None if not customer else customer,
+                            None if not healthCheckName else healthCheckName,
+                            None if not hc_set else hc_set,
+                            None if not triggerApplication else triggerApplication,
+                            None if not vendor else vendor,
+                            None if not nodeType else nodeType,
+                            None if not nodeName else nodeName,
+                            None if not checkpointName else checkpointName,
+                            None if not autoTT else autoTT,
+                            None if not command else command,
+                            None if not status else status,
+                            None if not remarks else remarks,
+                            None if not checkpointType else checkpointType,
+                            None if not resultValue else resultValue,
+                            None if not checkResult else checkResult,
+                            None if not shortText else shortText,
+                            None if not longText else longText,
+                            None if not requestId else requestId,
+                            None if not processId else processId,
+                            None if not timestamp else timestamp,
+                            None if not region else region,
+                            None if not logicNOK else logicNOK,
+                            None if not logicWarning else logicWarning,
+                            None if not incID else incID,
+                            None if not customNodeName else customNodeName,
+                            None if not details else details
+                            )
+        cursor.execute(query, record_to_insert)  # NOTE: these two lines should be commented out during local testing
+        conn.commit()  # NOTE: these two lines should be commented out during local testing
 
         # STEP 5: WRITE/APPEND IN CSV FILE   (Don't change anything here - ONLY if checkpoint is not suitable for details csv: if so comment out this part)
         # if str(details).lower()[0] == 'y':
@@ -209,107 +211,107 @@ def CP_Jun_Router_chassisEnvironment(input_json):  # NOTE: Function name and fil
 # TESTING BLOCK - NOTE: ALL CODE BELOW NEEDS TO BE REMOVED OR COMMENTED AWAY BEFORE UPLOADING TO CANOPY
 # You can replace the commandOutput part, maxAllowed and - if you want - also other data with text that is correct for your specific CP
 
-input_json = '''{
-"inputParameter": {
-"commandOutput": "Class Item                           Status     Measurement
-Temp  PEM 0                          OK         35 degrees C / 95 degrees F
-      PEM 1                          OK         35 degrees C / 95 degrees F
-      PEM 2                          OK         35 degrees C / 95 degrees F
-      PEM 3                          OK         35 degrees C / 95 degrees F
-      Routing Engine 0               OK         30 degrees C / 86 degrees F
-      Routing Engine 0 CPU           OK         46 degrees C / 114 degrees F
-      Routing Engine 1               OK         29 degrees C / 84 degrees F
-      Routing Engine 1 CPU           OK         42 degrees C / 107 degrees F
-      CB 0 Intake                    OK         31 degrees C / 87 degrees F
-      CB 0 Exhaust A                 OK         28 degrees C / 82 degrees F
-      CB 0 Exhaust B                 OK         37 degrees C / 98 degrees F
-      CB 0 ACBC                      OK         35 degrees C / 95 degrees F
-      CB 0 XF A                      OK         48 degrees C / 118 degrees F
-      CB 0 XF B                      OK         46 degrees C / 114 degrees F
-      CB 1 Intake                    OK         30 degrees C / 86 degrees F
-      CB 1 Exhaust A                 OK         28 degrees C / 82 degrees F
-      CB 1 Exhaust B                 OK         38 degrees C / 100 degrees F
-      CB 1 ACBC                      OK         35 degrees C / 95 degrees F
-      CB 1 XF A                      OK         48 degrees C / 118 degrees F
-      CB 1 XF B                      OK         46 degrees C / 114 degrees F
-      FPC 0 Intake                   OK         37 degrees C / 98 degrees F
-      FPC 0 Exhaust A                OK         35 degrees C / 95 degrees F
----(more)---
+# input_json = {
+# "inputParameter": {
+# "commandOutput": """Class Item                           Status     Measurement
+# Temp  PEM 0                          OK         35 degrees C / 95 degrees F
+#       PEM 1                          OK         35 degrees C / 95 degrees F
+#       PEM 2                          OK         35 degrees C / 95 degrees F
+#       PEM 3                          OK         35 degrees C / 95 degrees F
+#       Routing Engine 0               OK         30 degrees C / 86 degrees F
+#       Routing Engine 0 CPU           OK         46 degrees C / 114 degrees F
+#       Routing Engine 1               OK         29 degrees C / 84 degrees F
+#       Routing Engine 1 CPU           OK         42 degrees C / 107 degrees F
+#       CB 0 Intake                    OK         31 degrees C / 87 degrees F
+#       CB 0 Exhaust A                 OK         28 degrees C / 82 degrees F
+#       CB 0 Exhaust B                 OK         37 degrees C / 98 degrees F
+#       CB 0 ACBC                      OK         35 degrees C / 95 degrees F
+#       CB 0 XF A                      OK         48 degrees C / 118 degrees F
+#       CB 0 XF B                      OK         46 degrees C / 114 degrees F
+#       CB 1 Intake                    OK         30 degrees C / 86 degrees F
+#       CB 1 Exhaust A                 OK         28 degrees C / 82 degrees F
+#       CB 1 Exhaust B                 OK         38 degrees C / 100 degrees F
+#       CB 1 ACBC                      OK         35 degrees C / 95 degrees F
+#       CB 1 XF A                      OK         48 degrees C / 118 degrees F
+#       CB 1 XF B                      OK         46 degrees C / 114 degrees F
+#       FPC 0 Intake                   OK         37 degrees C / 98 degrees F
+#       FPC 0 Exhaust A                OK         35 degrees C / 95 degrees F
+# ---(more)---
                                         
-      FPC 0 Exhaust B                OK         54 degrees C / 129 degrees F
-      FPC 0 XL TSen                  OK         55 degrees C / 131 degrees F
-      FPC 0 XL Chip                  OK         49 degrees C / 120 degrees F
-      FPC 0 XL_XR0 TSen              OK         55 degrees C / 131 degrees F
-      FPC 0 XL_XR0 Chip              OK         52 degrees C / 125 degrees F
-      FPC 0 XL_XR1 TSen              OK         55 degrees C / 131 degrees F
-      FPC 0 XL_XR1 Chip              OK         54 degrees C / 129 degrees F
-      FPC 0 XQ TSen                  OK         55 degrees C / 131 degrees F
-      FPC 0 XQ Chip                  OK         46 degrees C / 114 degrees F
-      FPC 0 XQ_XR0 TSen              OK         55 degrees C / 131 degrees F
-      FPC 0 XQ_XR0 Chip              OK         49 degrees C / 120 degrees F
-      FPC 0 XM TSen                  OK         55 degrees C / 131 degrees F
-      FPC 0 XM Chip                  OK         65 degrees C / 149 degrees F
-      FPC 0 XF TSen                  OK         55 degrees C / 131 degrees F
-      FPC 0 XF Chip                  OK         72 degrees C / 161 degrees F
-      FPC 0 PLX PCIe Switch TSen     OK         40 degrees C / 104 degrees F
-      FPC 0 PLX PCIe Switch Chip     OK         41 degrees C / 105 degrees F
-      FPC 0 Aloha FPGA 0 TSen        OK         40 degrees C / 104 degrees F
-      FPC 0 Aloha FPGA 0 Chip        OK         57 degrees C / 134 degrees F
-      FPC 0 Aloha FPGA 1 TSen        OK         40 degrees C / 104 degrees F
-      FPC 0 Aloha FPGA 1 Chip        OK         67 degrees C / 152 degrees F
-      FPC 1 Intake                   OK         38 degrees C / 100 degrees F
-      FPC 1 Exhaust A                OK         38 degrees C / 100 degrees F
----(more 63%)---
+#       FPC 0 Exhaust B                OK         54 degrees C / 129 degrees F
+#       FPC 0 XL TSen                  OK         55 degrees C / 131 degrees F
+#       FPC 0 XL Chip                  OK         49 degrees C / 120 degrees F
+#       FPC 0 XL_XR0 TSen              OK         55 degrees C / 131 degrees F
+#       FPC 0 XL_XR0 Chip              OK         52 degrees C / 125 degrees F
+#       FPC 0 XL_XR1 TSen              OK         55 degrees C / 131 degrees F
+#       FPC 0 XL_XR1 Chip              OK         54 degrees C / 129 degrees F
+#       FPC 0 XQ TSen                  OK         55 degrees C / 131 degrees F
+#       FPC 0 XQ Chip                  OK         46 degrees C / 114 degrees F
+#       FPC 0 XQ_XR0 TSen              OK         55 degrees C / 131 degrees F
+#       FPC 0 XQ_XR0 Chip              OK         49 degrees C / 120 degrees F
+#       FPC 0 XM TSen                  OK         55 degrees C / 131 degrees F
+#       FPC 0 XM Chip                  OK         65 degrees C / 149 degrees F
+#       FPC 0 XF TSen                  OK         55 degrees C / 131 degrees F
+#       FPC 0 XF Chip                  OK         72 degrees C / 161 degrees F
+#       FPC 0 PLX PCIe Switch TSen     OK         40 degrees C / 104 degrees F
+#       FPC 0 PLX PCIe Switch Chip     OK         41 degrees C / 105 degrees F
+#       FPC 0 Aloha FPGA 0 TSen        OK         40 degrees C / 104 degrees F
+#       FPC 0 Aloha FPGA 0 Chip        OK         57 degrees C / 134 degrees F
+#       FPC 0 Aloha FPGA 1 TSen        OK         40 degrees C / 104 degrees F
+#       FPC 0 Aloha FPGA 1 Chip        OK         67 degrees C / 152 degrees F
+#       FPC 1 Intake                   OK         38 degrees C / 100 degrees F
+#       FPC 1 Exhaust A                OK         38 degrees C / 100 degrees F
+# ---(more 63%)---
                                         
-      FPC 1 Exhaust B                OK         60 degrees C / 140 degrees F
----(more 64%)---
+#       FPC 1 Exhaust B                OK         60 degrees C / 140 degrees F
+# ---(more 64%)---
                                         
-      FPC 1 XL TSen                  OK         62 degrees C / 143 degrees F
-      FPC 1 XL Chip                  OK         53 degrees C / 127 degrees F
-      FPC 1 XL_XR0 TSen              OK         62 degrees C / 143 degrees F
-      FPC 1 XL_XR0 Chip              OK         55 degrees C / 131 degrees F
-      FPC 1 XL_XR1 TSen              OK         62 degrees C / 143 degrees F
-      FPC 1 XL_XR1 Chip              OK         58 degrees C / 136 degrees F
-      FPC 1 XQ TSen                  OK         62 degrees C / 143 degrees F
-      FPC 1 XQ Chip                  OK         49 degrees C / 120 degrees F
-      FPC 1 XQ_XR0 TSen              OK         62 degrees C / 143 degrees F
-      FPC 1 XQ_XR0 Chip              OK         52 degrees C / 125 degrees F
-      FPC 1 XM TSen                  OK         62 degrees C / 143 degrees F
-      FPC 1 XM Chip                  OK         71 degrees C / 159 degrees F
-      FPC 1 XF TSen                  OK         62 degrees C / 143 degrees F
-      FPC 1 XF Chip                  OK         77 degrees C / 170 degrees F
-      FPC 1 PLX PCIe Switch TSen     OK         41 degrees C / 105 degrees F
-      FPC 1 PLX PCIe Switch Chip     OK         42 degrees C / 107 degrees F
-      FPC 1 Aloha FPGA 0 TSen        OK         41 degrees C / 105 degrees F
-      FPC 1 Aloha FPGA 0 Chip        OK         62 degrees C / 143 degrees F
-      FPC 1 Aloha FPGA 1 TSen        OK         41 degrees C / 105 degrees F
-      FPC 1 Aloha FPGA 1 Chip        OK         73 degrees C / 163 degrees F
-Fans  Top Rear Fan                   OK         Spinning at intermediate-speed
-      Bottom Rear Fan                OK         Spinning at intermediate-speed
-      Top Middle Fan                 OK         Spinning at intermediate-speed
----(more 95%)---
+#       FPC 1 XL TSen                  OK         62 degrees C / 143 degrees F
+#       FPC 1 XL Chip                  OK         53 degrees C / 127 degrees F
+#       FPC 1 XL_XR0 TSen              OK         62 degrees C / 143 degrees F
+#       FPC 1 XL_XR0 Chip              OK         55 degrees C / 131 degrees F
+#       FPC 1 XL_XR1 TSen              OK         62 degrees C / 143 degrees F
+#       FPC 1 XL_XR1 Chip              OK         58 degrees C / 136 degrees F
+#       FPC 1 XQ TSen                  OK         62 degrees C / 143 degrees F
+#       FPC 1 XQ Chip                  OK         49 degrees C / 120 degrees F
+#       FPC 1 XQ_XR0 TSen              OK         62 degrees C / 143 degrees F
+#       FPC 1 XQ_XR0 Chip              OK         52 degrees C / 125 degrees F
+#       FPC 1 XM TSen                  OK         62 degrees C / 143 degrees F
+#       FPC 1 XM Chip                  OK         71 degrees C / 159 degrees F
+#       FPC 1 XF TSen                  OK         62 degrees C / 143 degrees F
+#       FPC 1 XF Chip                  OK         77 degrees C / 170 degrees F
+#       FPC 1 PLX PCIe Switch TSen     OK         41 degrees C / 105 degrees F
+#       FPC 1 PLX PCIe Switch Chip     OK         42 degrees C / 107 degrees F
+#       FPC 1 Aloha FPGA 0 TSen        OK         41 degrees C / 105 degrees F
+#       FPC 1 Aloha FPGA 0 Chip        OK         62 degrees C / 143 degrees F
+#       FPC 1 Aloha FPGA 1 TSen        OK         41 degrees C / 105 degrees F
+#       FPC 1 Aloha FPGA 1 Chip        OK         73 degrees C / 163 degrees F
+# Fans  Top Rear Fan                   OK         Spinning at intermediate-speed
+#       Bottom Rear Fan                OK         Spinning at intermediate-speed
+#       Top Middle Fan                 OK         Spinning at intermediate-speed
+# ---(more 95%)---
                                         
-      Bottom Middle Fan              OK         Spinning at intermediate-speed
----(more 97%)---
+#       Bottom Middle Fan              OK         Spinning at intermediate-speed
+# ---(more 97%)---
                                         
-      Top Front Fan                  OK         Spinning at intermediate-speed
-      Bottom Front Fan               OK         Spinning at intermediate-speed",
-"autoTT" : "No",
-"details":"Yes",
-"maxAllowed" : "25",
-"status" : "SUCCESS",
-"remarks" : "success",
-"info" : {"nodeName" : "AppServer1",
-          "customer" : "3IE",
-          "set" : "Daily_OSS",
-          "healthCheckName" : "Nokia_NetAct_Filesystem_check",
-          "requestId" : "12345",
-          "processId" : "67890",
-          "region" : "Ireland",
-          "triggerApplication" : "s",
-          "customNodeName":"Andhra Pradesh"}
-}
-}'''
+#       Top Front Fan                  OK         Spinning at intermediate-speed
+#       Bottom Front Fan               OK         Spinning at intermediate-speed""",
+# "autoTT" : "No",
+# "details":"Yes",
+# "maxAllowed" : "25",
+# "status" : "SUCCESS",
+# "remarks" : "success",
+# "info" : {"nodeName" : "AppServer1",
+#           "customer" : "3IE",
+#           "set" : "Daily_OSS",
+#           "healthCheckName" : "Nokia_NetAct_Filesystem_check",
+#           "requestId" : "12345",
+#           "processId" : "67890",
+#           "region" : "Ireland",
+#           "triggerApplication" : "s",
+#           "customNodeName":"Andhra Pradesh"}
+# }
+# }
 
-a = CP_Jun_Router_chassisEnvironment(input_json)
-print(a)
+# a = CP_Jun_Router_chassisEnvironment(input_json)
+# print(a)

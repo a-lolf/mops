@@ -8,8 +8,8 @@ import sys
 import traceback                      # For V2
 import pandas as pd             # For efficient handling of tabular content
 import os
-# import psycopg2                 # For PostgreSQL database interactions
-# import GenericDB_Connection     # For generic database connection functions
+import psycopg2                 # For PostgreSQL database interactions
+# import GenericDB_Connection     # type: ignore # For generic database connection functions
 
 
 def CP_Jun_SW_ChassisRoutingEngine(input_json):  # NOTE: Function name and file name have to be EXACTLY the same!
@@ -77,18 +77,18 @@ def CP_Jun_SW_ChassisRoutingEngine(input_json):  # NOTE: Function name and file 
                 if temperature > maxAllowed:
                     resultValue += 1
 
+        if not resultValue:
+            shortText = "All devices are reported NORMAL."
+        else:
+            shortText = f"There are {resultValue} components' temperature with > {maxAllowed} degrees C"   
 
-        # Placeholder for code to decide checkResult
-        checkResult = 'NOK' if resultValue != 0 else 'OK'
+        checkResult = "OK" if not resultValue else "NOK"
         
-        # Determine autoTT based on resultValue
-        autoTT = "Yes" if resultValue != 0 else "No"
-
+        # Assigns "No" to autoTT if resultValue >= 1, otherwise assigns "Yes"
+        autoTT = "No" if not resultValue else "Yes"
+        
         # Determine details based on autoTT
         details = "Yes" if autoTT == "Yes" else "No"
-
-        # Placeholder for code to assign shortText (one-liner to give some context to the resultValue)
-        shortText = f"There are {resultValue} components' temperature with > {maxAllowed} degrees C"                # Eg_ f'There are {resultValue} dirs with > {maxAllowed}% used disk space.'
 
         # Placeholder for code to assign longText.
         # NOTE: this feature is currently not in use - no need to add anything here
@@ -283,7 +283,7 @@ Routing Engine status:
                                        1.29       0.94       0.79",
 "autoTT" : "No",
 "details":"No",
-"maxAllowed" : "28",
+"maxAllowed" : "25",
 "status" : "SUCCESS",
 "remarks" : "success",
 "info" : {"nodeName" : "AppServer1",

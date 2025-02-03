@@ -10,7 +10,7 @@ import psycopg2                 # For PostgreSQL database interactions
 import GenericDB_Connection     # For generic database connection functions
 
 
-def CP_Jun_SW_ChassisAlarms(input_json):  # NOTE: Function name and file name have to be EXACTLY the same!
+def CP_Jun_SW_SystemAlarms(input_json):  # NOTE: Function name and file name have to be EXACTLY the same!
     """
     Description:
     Checking if Huawei Router uptime, where the uptime should be 1 days(24 hours) or more.(deviation of <minDevOk> hours is accepted)
@@ -51,8 +51,8 @@ def CP_Jun_SW_ChassisAlarms(input_json):  # NOTE: Function name and file name ha
         checkpointName = 'Chassis Alarms'  # Give a descriptive but short name, eg 'Processor load', 'Linkset status' etc
         checkpointType = 'check'  # Select either 'check' or 'info'
         command = 'show chassis alarms'  # Command used to get the commandOutput, eg 'df -h'
-        logicNOK = f'If there is any active alarm, it is considered as Not OK'  # Explain in words what is considered as Not OK - short and concise. Include any reference values passed into the function. Eg f'NOK if any directory has more than {maxAllowed}% used disk space'. Leave empty if checkpointType='info'
-        logicWarning = f'If there is any active alarm, it is considered as Not OK'  # Same as above but for what is considered a Warning. Leave empty if not used or if checkpointType='info'
+        logicNOK = f'NOK if any active alarms'  # Explain in words what is considered as Not OK - short and concise. Include any reference values passed into the function. Eg f'NOK if any directory has more than {maxAllowed}% used disk space'. Leave empty if checkpointType='info'
+        logicWarning = f'NOK if any active alarms'  # Same as above but for what is considered a Warning. Leave empty if not used or if checkpointType='info'
 
         # STEP 3: CORE LOGIC FOR THE CP TO CALCULATE REQUIRED VALUES WHEN EXECUTING
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -66,6 +66,12 @@ def CP_Jun_SW_ChassisAlarms(input_json):  # NOTE: Function name and file name ha
             checkResult = 'NOK'
         else:
             checkResult = 'OK'
+        
+        # Assigns "No" to autoTT if resultValue >= 1, otherwise assigns "Yes"
+        autoTT = "No" if not resultValue else "Yes"
+       
+        # Determine details based on autoTT
+        details = "Yes" if autoTT == "Yes" else "No"
 
         # Placeholder for code to assign shortText (one-liner to give some context to the resultValue)
         shortText = f'There are no currently active alarms' # Eg_ f'There are {resultValue} dirs with > {maxAllowed}% used disk space.'
@@ -198,8 +204,7 @@ def CP_Jun_SW_ChassisAlarms(input_json):  # NOTE: Function name and file name ha
 
 # input_json = {
 # "inputParameter": {
-# "commandOutput": """Noc@MG-AN1-5110-BLF01> show chassis alarms 
-# No alarms currently active""",
+# "commandOutput": """No alarms currently active""",
 # "autoTT": "No",
 # "details": "No",
 # "minUptime": "24",
@@ -210,7 +215,7 @@ def CP_Jun_SW_ChassisAlarms(input_json):  # NOTE: Function name and file name ha
 # "nodeName": "AppServer1",
 # "customer": "3IE",
 # "set": "Daily_OSS",
-# "healthCheckName": "Jun_SW_ChassisAlarms",
+# "healthCheckName": "Jun_SW_SystemUptime",
 # "requestId": "12345",
 # "processId": "67890",
 # "region": "Ireland",
@@ -220,5 +225,5 @@ def CP_Jun_SW_ChassisAlarms(input_json):  # NOTE: Function name and file name ha
 # }
 # }
 
-# a = CP_Jun_SW_ChassisAlarms(input_json)
+# a = CP_Jun_SW_SystemAlarms(input_json)
 # print(a)

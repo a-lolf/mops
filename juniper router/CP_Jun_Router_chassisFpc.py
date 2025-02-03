@@ -3,17 +3,18 @@ import json                     # For handling input and output via JSON format
 import logging
 import re                       # For regular expression operations
 import datetime                 # For handling date and time
-import sys                      # For V2
+import sys
+import traceback                      # For V2
 import pandas as pd             # For efficient handling of tabular content
 import os
 import psycopg2                 # For PostgreSQL database interactions
-import GenericDB_Connection     # For generic database connection functions
+# import GenericDB_Connection     # For generic database connection functions
 
 
-def CP_Jun_SW_ChassisAlarms(input_json):  # NOTE: Function name and file name have to be EXACTLY the same!
+def CP_Jun_Router_chassisFpc(input_json):  # NOTE: Function name and file name have to be EXACTLY the same!
     """
     Description:
-    Checking if Huawei Router uptime, where the uptime should be 1 days(24 hours) or more.(deviation of <minDevOk> hours is accepted)
+    Write a suitable description about what the CP is about here.
 
     Parameters:
         input_json (str): A JSON-formatted string containing health check parameters, such as command outputs,
@@ -24,7 +25,7 @@ def CP_Jun_SW_ChassisAlarms(input_json):  # NOTE: Function name and file name ha
              if processing fails.
 
     Change log:
-        28 Jan 2025 Amaan Ansari     First Version, using template v6
+    30 Jan 2025  Amaan Ansari                    First version, using template v6
     """
 
     try:
@@ -43,32 +44,39 @@ def CP_Jun_SW_ChassisAlarms(input_json):  # NOTE: Function name and file name ha
         region = input_json.get('inputParameter', {}).get('info', {}).get('region')
         triggerApplication = input_json.get('inputParameter', {}).get('info', {}).get('triggerApplication')
         customNodeName = input_json.get('inputParameter', {}).get('info', {}).get('customNodeName')
-        # Placeholder for adding any other parameter(s) referring to reference values
+        maxAllowed = input_json.get('inputParameter', {}).get('maxAllowed')
 
         # STEP 2: HARDCODED CONFIGURATION FOR THIS SPECIFIC CP
         vendor = 'Juniper'  # Fill with vendor name, eg 'Huawei'
-        nodeType = 'Switch'  # Fill with nodeType, eg 'Router'
-        checkpointName = 'Chassis Alarms'  # Give a descriptive but short name, eg 'Processor load', 'Linkset status' etc
+        nodeType = 'Router'  # Fill with nodeType, eg 'Router'
+        checkpointName = 'Chassis FPC'  # Give a descriptive but short name, eg 'Processor load', 'Linkset status' etc
         checkpointType = 'check'  # Select either 'check' or 'info'
-        command = 'show chassis alarms'  # Command used to get the commandOutput, eg 'df -h'
-        logicNOK = f'If there is any active alarm, it is considered as Not OK'  # Explain in words what is considered as Not OK - short and concise. Include any reference values passed into the function. Eg f'NOK if any directory has more than {maxAllowed}% used disk space'. Leave empty if checkpointType='info'
-        logicWarning = f'If there is any active alarm, it is considered as Not OK'  # Same as above but for what is considered a Warning. Leave empty if not used or if checkpointType='info'
+        command = 'show chassis fpc'  # Command used to get the commandOutput, eg 'df -h'
+        logicNOK = f"NOK if buffer is > {maxAllowed} degrees C"  # Explain in words what is considered as Not OK - short and concise. Include any reference values passed into the function. Eg f'NOK if any directory has more than {maxAllowed}% used disk space'. Leave empty if checkpointType='info'
+        logicWarning = f"NOK if buffer is > {maxAllowed} degrees C"  # Same as above but for what is considered a Warning. Leave empty if not used or if checkpointType='info'
 
         # STEP 3: CORE LOGIC FOR THE CP TO CALCULATE REQUIRED VALUES WHEN EXECUTING
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         incID = ''  # Leave this as is - incID will not be allocated at this stage
 
         # Placeholder for code to extract the result value (should be ONE value which can be used below to decide checkResult)
-        resultValue = bool(re.search('No alarms currently active', commandOutput))
+        resultValue = 0
+        regex = r"\d+\s+\w+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+(\d+)"
+        buffer_values = re.findall(regex, commandOutput)
+        for buffer in buffer_values:
+            if buffer > maxAllowed:
+                resultValue +=1
+
+        checkResult = "OK" if not resultValue else "NOK"
         
-        # Placeholder for code to decide checkResult
-        if not resultValue:
-            checkResult = 'NOK'
-        else:
-            checkResult = 'OK'
+        # Assigns "No" to autoTT if resultValue >= 1, otherwise assigns "Yes"
+        autoTT = "No" if not resultValue else "Yes"
+        
+        # Determine details based on autoTT
+        details = "Yes" if autoTT == "Yes" else "No"
 
         # Placeholder for code to assign shortText (one-liner to give some context to the resultValue)
-        shortText = f'There are no currently active alarms' # Eg_ f'There are {resultValue} dirs with > {maxAllowed}% used disk space.'
+        shortText = f"There are {resultValue} slots with > {maxAllowed} buffer %"
 
         # Placeholder for code to assign longText.
         # NOTE: this feature is currently not in use - no need to add anything here
@@ -95,62 +103,62 @@ def CP_Jun_SW_ChassisAlarms(input_json):  # NOTE: Function name and file name ha
                                                       # for index, row in deviations.iterrows()]   --- assuming that each variable deviations is a dataFrame with all rows that need to be written.
             data_to_write = [commandOutput]
         # STEP 4: INSERT RESULTS INTO DATABASE (Don't change)
-        params = GenericDB_Connection.read_db_config()
-        conn = psycopg2.connect(**params)
-        cursor = conn.cursor()
-        # Fetch the latest ID and increment it
-        fetch_next_id_query = "SELECT COALESCE(MAX(CAST(id AS INTEGER)), 0) + 1 AS next_id FROM hc.hc_results;"
-        cursor.execute(fetch_next_id_query)
-        next_id = cursor.fetchone()[0]  # Get the next available ID
+        # params = GenericDB_Connection.read_db_config()
+        # conn = psycopg2.connect(**params)
+        # cursor = conn.cursor()
+        # # Fetch the latest ID and increment it
+        # fetch_next_id_query = "SELECT COALESCE(MAX(CAST(id AS INTEGER)), 0) + 1 AS next_id FROM hc.hc_results;"
+        # cursor.execute(fetch_next_id_query)
+        # next_id = cursor.fetchone()[0]  # Get the next available ID
 
-        query = (
-            'INSERT INTO hc.hc_results (id, customer, health_check_name, set, trigger_application, vendor, node_type, node_name, checkpoint_name, autott, command,status, remarks, checkpoint_type, result_value,check_result,short_text,long_text,request_id, process_id,timestamp,region, logic_nok, logic_warning, inc_id, custom_nodename, details) '
-            'VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id;')
-        record_to_insert = (next_id,
-                            None if not customer else customer,
-                            None if not healthCheckName else healthCheckName,
-                            None if not hc_set else hc_set,
-                            None if not triggerApplication else triggerApplication,
-                            None if not vendor else vendor,
-                            None if not nodeType else nodeType,
-                            None if not nodeName else nodeName,
-                            None if not checkpointName else checkpointName,
-                            None if not autoTT else autoTT,
-                            None if not command else command,
-                            None if not status else status,
-                            None if not remarks else remarks,
-                            None if not checkpointType else checkpointType,
-                            None if not resultValue else resultValue,
-                            None if not checkResult else checkResult,
-                            None if not shortText else shortText,
-                            None if not longText else longText,
-                            None if not requestId else requestId,
-                            None if not processId else processId,
-                            None if not timestamp else timestamp,
-                            None if not region else region,
-                            None if not logicNOK else logicNOK,
-                            None if not logicWarning else logicWarning,
-                            None if not incID else incID,
-                            None if not customNodeName else customNodeName,
-                            None if not details else details
-                            )
-        cursor.execute(query, record_to_insert)  # NOTE: these two lines should be commented out during local testing
-        conn.commit()  # NOTE: these two lines should be commented out during local testing
+        # query = (
+        #     'INSERT INTO hc.hc_results (id, customer, health_check_name, set, trigger_application, vendor, node_type, node_name, checkpoint_name, autott, command,status, remarks, checkpoint_type, result_value,check_result,short_text,long_text,request_id, process_id,timestamp,region, logic_nok, logic_warning, inc_id, custom_nodename, details) '
+        #     'VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id;')
+        # record_to_insert = (next_id,
+        #                     None if not customer else customer,
+        #                     None if not healthCheckName else healthCheckName,
+        #                     None if not hc_set else hc_set,
+        #                     None if not triggerApplication else triggerApplication,
+        #                     None if not vendor else vendor,
+        #                     None if not nodeType else nodeType,
+        #                     None if not nodeName else nodeName,
+        #                     None if not checkpointName else checkpointName,
+        #                     None if not autoTT else autoTT,
+        #                     None if not command else command,
+        #                     None if not status else status,
+        #                     None if not remarks else remarks,
+        #                     None if not checkpointType else checkpointType,
+        #                     None if not resultValue else resultValue,
+        #                     None if not checkResult else checkResult,
+        #                     None if not shortText else shortText,
+        #                     None if not longText else longText,
+        #                     None if not requestId else requestId,
+        #                     None if not processId else processId,
+        #                     None if not timestamp else timestamp,
+        #                     None if not region else region,
+        #                     None if not logicNOK else logicNOK,
+        #                     None if not logicWarning else logicWarning,
+        #                     None if not incID else incID,
+        #                     None if not customNodeName else customNodeName,
+        #                     None if not details else details
+        #                     )
+        # cursor.execute(query, record_to_insert)  # NOTE: these two lines should be commented out during local testing
+        # conn.commit()  # NOTE: these two lines should be commented out during local testing
 
         # STEP 5: WRITE/APPEND IN CSV FILE   (Don't change anything here - ONLY if checkpoint is not suitable for details csv: if so comment out this part)
-        if str(details).lower()[0] == 'y':
-            directory = '/ssdprepo/HC/' + healthCheckName + '/' + str(requestId) + '/'
-            file_name = checkpointName + '.csv'  # checkpoint name.csv
-            file_path = os.path.join(directory, file_name)
-            os.makedirs(directory, exist_ok=True)  # Create the directory if it doesn't exist
-            module_name = "write_or_append_csv_v2"
-            module_path = "/ssdprepo/wfmgr/texthandlers/python/write_or_append_csv_v2.py"
-            spec = importlib.util.spec_from_file_location(module_name, module_path)
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[module_name] = module
-            spec.loader.exec_module(module)
-            csv_file_status = module.write_or_append_csv_v2(headers, data_to_write, file_path)
-            logging.info(f'csv_file_status{csv_file_status}')
+        # if str(details).lower()[0] == 'y':
+        #     directory = '/ssdprepo/HC/' + healthCheckName + '/' + str(requestId) + '/'
+        #     file_name = checkpointName + '.csv'  # checkpoint name.csv
+        #     file_path = os.path.join(directory, file_name)
+        #     os.makedirs(directory, exist_ok=True)  # Create the directory if it doesn't exist
+        #     module_name = "write_or_append_csv_v2"
+        #     module_path = "/ssdprepo/wfmgr/texthandlers/python/write_or_append_csv_v2.py"
+        #     spec = importlib.util.spec_from_file_location(module_name, module_path)
+        #     module = importlib.util.module_from_spec(spec)
+        #     sys.modules[module_name] = module
+        #     spec.loader.exec_module(module)
+        #     csv_file_status = module.write_or_append_csv_v2(headers, data_to_write, file_path)
+        #     logging.info(f'csv_file_status{csv_file_status}')
 
         # STEP 6: PREPARE OUTPUT AS A PYTHON DICT  (Don't touch anything here)
         outputRecord = {"customer": customer,
@@ -187,7 +195,7 @@ def CP_Jun_SW_ChassisAlarms(input_json):  # NOTE: Function name and file name ha
     # STEP 7: EXCEPTION HANDLING  (don't touch anything here)
     except Exception as e:
         error = format(e)
-        output_json = {'remarks': error, 'status': 'Fail'}  # in case of error, returning python error message
+        output_json = {'remarks': traceback.format_exc(), 'status': 'Fail'}  # in case of error, returning python error message
         output_json = json.dumps(output_json, indent=2)
 
     # STEP 7: RETURN STATEMENT  (don't touch anything here)
@@ -196,29 +204,32 @@ def CP_Jun_SW_ChassisAlarms(input_json):  # NOTE: Function name and file name ha
 # TESTING BLOCK - NOTE: ALL CODE BELOW NEEDS TO BE REMOVED OR COMMENTED AWAY BEFORE UPLOADING TO CANOPY
 # You can replace the commandOutput part, maxAllowed and - if you want - also other data with text that is correct for your specific CP
 
-# input_json = {
-# "inputParameter": {
-# "commandOutput": """Noc@MG-AN1-5110-BLF01> show chassis alarms 
-# No alarms currently active""",
-# "autoTT": "No",
-# "details": "No",
-# "minUptime": "24",
-# "status": "SUCCESS",
-# "remarks": "success",
+input_json = {
+"inputParameter": {
+"commandOutput":'''                     Temp  CPU Utilization (%)   CPU Utilization (%)  Memory    Utilization (%)
+Slot State            (C)  Total  Interrupt      1min   5min   15min  DRAM (MB) Heap     Buffer
+  0  Online            35     19          2       18     18     18    3584        8         25
+  1  Online            38     19          2       18     18     18    3584        8         25
+  2  Empty           
+  3  Empty           
+  4  Empty           
+  5  Empty   ''',
+"autoTT" : "No",
+"details":"Yes",
+"maxAllowed" : "125",
+"status" : "SUCCESS",
+"remarks" : "success",
+"info" : {"nodeName" : "AppServer1",
+          "customer" : "3IE",
+          "set" : "Daily_OSS",
+          "healthCheckName" : "Nokia_NetAct_Filesystem_check",
+          "requestId" : "12345",
+          "processId" : "67890",
+          "region" : "Ireland",
+          "triggerApplication" : "s",
+          "customNodeName":"Andhra Pradesh"}
+}
+}
 
-# "info": {
-# "nodeName": "AppServer1",
-# "customer": "3IE",
-# "set": "Daily_OSS",
-# "healthCheckName": "Jun_SW_ChassisAlarms",
-# "requestId": "12345",
-# "processId": "67890",
-# "region": "Ireland",
-# "triggerApplication": "s",
-# "customNodeName": "Andhra Pradesh"
-# }
-# }
-# }
-
-# a = CP_Jun_SW_ChassisAlarms(input_json)
-# print(a)
+a = CP_Jun_Router_chassisFpc(input_json)
+print(a)
